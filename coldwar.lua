@@ -20,11 +20,19 @@ end
 local cobalt = dofile(args[1] or "cobalt")
 cobalt.ui = dofile("cobalt-ui/init.lua")
 
+local StrategicCommandCenterPlaced = false
+local StrategicCommandCenterPosition = {
+	["X"] = 0,
+	["Y"] = 0,
+}
+local DEFCON = 5
 local nations = {
 	["United States"] = {
 		["Population"] = 0,
+		["Resources"] = 10000, -- $10K
 		["Image"] = "US.nfp",
 		["Color"] = colors.blue,
+		["Buildings"] = {},
 		["Cities"] = {
 			["Los Angeles"] = {
 				["X"] = 8,
@@ -86,8 +94,10 @@ local nations = {
 	},
 	["China"] = {
 		["Population"] = 0,
+		["Resources"] = 10000, -- $10K
 		["Image"] = "China.nfp",
-		["Color"] = colors.red,
+		["Color"] = colors.orange,
+		["Buildings"] = {},
 		["Cities"] = {
 			["Beijing"] = {
 				["X"] = 42,
@@ -165,6 +175,13 @@ for k,v in pairs(nations) do
 	v["Population"] = Napop -- The population that the nation was at when the game started E.G. Perfectly healthy nation
 end
 
+local worldMap = nil
+if fs.exists("worldmap.nfp") then
+	worldMap = cobalt.surface.load("worldmap.nfp")
+else
+	error("Missing image : ".."worldmap.nfp")
+end
+
 local nationSelectedForPlaying = "United States"
 local nationSelectedForFighting = "China"
 local nationSelectedForGUI = "United States"
@@ -178,6 +195,9 @@ local turnStringTICK = 20
 local tick = 0
 local tickRate = 0.2
 
+local gridToggle = false
+
+local CommandCenterGUI = false
 local ContextSelected = nil
 local ContextDisabled = false
 local ContextOverride = false
@@ -262,6 +282,21 @@ local ContextMenu = {
 				city.Work = "BuildCruise"
 			end,
 		},
+		
+		["command"] = {
+			[1] = {
+				["Text"] = "Raise DEFCON",
+				["Function"] = function(city)
+					if city.Work == "RaiseDEFCON" then
+						city.Icon = "A"
+						city.Work = false
+					else
+						city.Icon = "!"
+						city.Work = "RaiseDEFCON"
+					end
+				end,
+			},
+		}
 	},
 	["Enemy"] = { -- Clicking on enemy cities
 		[1] = {
@@ -294,7 +329,7 @@ local ContextMenu = {
 	},
 }
 
-for k,v in pairs(ContextButtons) do
+--[[for k,v in pairs(ContextButtons) do
 	v.onclick = function()
 		if nationSelectedForGUI == nationSelectedForPlaying then
 			if ContextMenu["You"][k] then
@@ -306,11 +341,15 @@ for k,v in pairs(ContextButtons) do
 			end
 		end
 	end
-end
+end]]--
 
 local MainPanel = cobalt.ui.new({w=4,h=1})
+
 local SwapViewButton = MainPanel:add("button",{w=4,h=1,text="View",foreColour = colors.white,backColour = colors.grey})
 SwapViewButton.onclick = function()
+	ContextSelected = nil
+	ContextPanel.x = -100
+	ContextPanel.y = -100
 	if nationSelectedForPlaying == nationSelectedForGUI then
 		nationSelectedForGUI = nationSelectedForFighting
 	else
@@ -334,6 +373,16 @@ local function renderPop(pop)
 		end
 	else
 		return pop
+	end
+end
+
+local function checkLegalBuildingSite(x,y)
+	if nations[nationSelectedForGUI] and nations[nationSelectedForGUI]["Color"] then
+		if (cobalt.application.view.buffer[((y - 1) * 51 + x) * 3 - 1] == nations[nationSelectedForGUI]["Color"]) or (cobalt.application.view.buffer[((y - 1) * 51 + x) * 3 - 1] == colors.black) then
+			return false
+		else
+			return true
+		end
 	end
 end
 
@@ -389,10 +438,107 @@ local AISteps = {}
 	end
 end]]--
 
-local NextTurnPanel = cobalt.ui.new({w = 9,h = 1, x = 1, y=19})
-local NextTurnButton = NextTurnPanel:add("button",{w=9,h=1,text="Next Turn"})
+local NextTurnPanel = cobalt.ui.new({w = 14,h = 2, x = 1, y=18,backColour = colors.black})
+local NextTurnButton = NextTurnPanel:add("button",{w=9,h=1,y=2,text="Next Turn"})
 NextTurnButton.onclick = function()
-	TURNOVER = true
+	if StrategicCommandCenterPlaced then
+		TURNOVER = true
+	else
+		AlertPanel.backColour = nations[nationSelectedForPlaying]["Color"]
+		AlertText.backColour = nations[nationSelectedForPlaying]["Color"]
+		AlertText.foreColour = colors.white
+		AlertText.text = "Build your strategic command center"
+		AlertPanel.state = "_ALL"
+		AlertText.state = "_ALL"
+		AlertTimer = 10
+	end
+end
+
+local CommandCenterPanel = cobalt.ui.new({w=51,h=19,backColour = colors.black,state=false})
+local CommandCenterMapBackDrop = CommandCenterPanel:add("panel",{x=2,y=math.floor(19/2)-3,w=27,h=12,backColour=colors.black})
+
+local CommandCenterDEFCON5 = CommandCenterPanel:add("panel",{w=3,h=2,x=3,y=3,foreColour = colors.white,backColour = colors.blue})
+local CommandCenterDEFCON5Text = CommandCenterDEFCON5:add("text",{w=1,h=1,x=1,y=1,text="5",foreColour=colors.white})
+
+local CommandCenterDEFCON4 = CommandCenterPanel:add("panel",{w=3,h=2,x=7,y=3,foreColour = colors.white,backColour = colors.green})
+local CommandCenterDEFCON4Text = CommandCenterDEFCON4:add("text",{w=1,h=1,x=1,y=1,text="4",foreColour=colors.white})
+
+local CommandCenterDEFCON3 = CommandCenterPanel:add("panel",{w=3,h=2,x=11,y=3,foreColour = colors.white,backColour = colors.orange})
+local CommandCenterDEFCON3Text = CommandCenterDEFCON3:add("text",{w=1,h=1,x=1,y=1,text="3",foreColour=colors.white})
+
+local CommandCenterDEFCON2 = CommandCenterPanel:add("panel",{w=3,h=2,x=15,y=3,foreColour = colors.white,backColour = colors.red})
+local CommandCenterDEFCON2Text = CommandCenterDEFCON2:add("text",{w=1,h=1,x=1,y=1,text="2",foreColour=colors.white})
+
+local CommandCenterDEFCON1 = CommandCenterPanel:add("panel",{w=3,h=2,x=19,y=3,foreColour = colors.white,backColour = colors.white})
+local CommandCenterDEFCON1Text = CommandCenterDEFCON1:add("text",{w=1,h=1,x=1,y=1,text="1",foreColour=colors.black})
+
+local CommandCenterDEFCONLabelPanel = CommandCenterPanel:add("panel",{w=19,h=1,x=3,y=2,foreColour=colors.white,backColour=colors.black})
+local CommandCenterDEFCONLabel = CommandCenterDEFCONLabelPanel:add("text",{w=19,h=1,x=1,y=1,text="D E F C O N",foreColour=colors.white,backColour=colors.black,wrap="center"})
+
+local CommandCenterBack = CommandCenterPanel:add("button",{w=10,h=1,y=19,text="Back to Map",foreColour = colors.white,backColour = colors.grey})
+CommandCenterBack.onclick = function()
+	CommandCenterGUI = false
+	ContextDisabled = false
+	
+	NextTurnPanel.state = "_ALL"
+	MainPanel.state = "_ALL"
+	
+	CommandCenterPanel.state = false
+	CommandCenterBack.state = false
+	CommandCenterMapBackDrop.state = false
+end
+
+local CommandCenterButton = NextTurnPanel:add("button",{w=14,h=1,text="Command Center",foreColour = colors.white,backColour = colors.grey})
+CommandCenterButton.onclick = function()
+	if StrategicCommandCenterPlaced then
+		CommandCenterGUI = true
+		ContextDisabled = true
+		
+		NextTurnPanel.state = false
+		MainPanel.state = false
+		
+		CommandCenterPanel.state = "_ALL"
+		CommandCenterBack.state = "_ALL"
+		CommandCenterMapBackDrop.backColour = nations[nationSelectedForPlaying]["Color"]
+		CommandCenterMapBackDrop.state = "_ALL"
+		
+		CommandCenterDEFCON5.backColour = colors.gray
+		CommandCenterDEFCON4.backColour = colors.gray
+		CommandCenterDEFCON3.backColour = colors.gray
+		CommandCenterDEFCON2.backColour = colors.gray
+		CommandCenterDEFCON1.backColour = colors.gray
+		
+		CommandCenterDEFCON5Text.backColour = colors.gray
+		CommandCenterDEFCON4Text.backColour = colors.gray
+		CommandCenterDEFCON3Text.backColour = colors.gray
+		CommandCenterDEFCON2Text.backColour = colors.gray
+		CommandCenterDEFCON1Text.backColour = colors.gray
+		
+		if DEFCON == 5 then
+			CommandCenterDEFCON5.backColour = colors.blue
+			CommandCenterDEFCON5Text.backColour = colors.blue
+		elseif DEFCON == 4 then
+			CommandCenterDEFCON4.backColour = colors.green
+			CommandCenterDEFCON4Text.backColour = colors.green
+		elseif DEFCON == 3 then
+			CommandCenterDEFCON3.backColour = colors.orange
+			CommandCenterDEFCON3Text.backColour = colors.orange
+		elseif DEFCON == 2 then
+			CommandCenterDEFCON2.backColour = colors.red
+			CommandCenterDEFCON2Text.backColour = colors.red
+		elseif DEFCON == 1 then
+			CommandCenterDEFCON1.backColour = colors.white
+			CommandCenterDEFCON1Text.backColour = colors.white
+		end
+	else
+		AlertPanel.backColour = nations[nationSelectedForPlaying]["Color"]
+		AlertText.backColour = nations[nationSelectedForPlaying]["Color"]
+		AlertText.foreColour = colors.white
+		AlertText.text = "Build your strategic command center"
+		AlertPanel.state = "_ALL"
+		AlertText.state = "_ALL"
+		AlertTimer = 10
+	end
 end
 
 local AISteps = {}
@@ -466,7 +612,7 @@ function cobalt.update( dt )
 						--v.Work = "BuildNuke"
 					end
 					
-					if v.Nukes > 0 then
+					--[[if v.Nukes > 0 then
 						local highest = nil
 						for p,b in pairs(nations[nationSelectedForPlaying]["Cities"]) do
 							if highest == nil then highest = b else
@@ -480,7 +626,7 @@ function cobalt.update( dt )
 							}
 						})
 						--FireNuke(v,b,false)
-					end
+					end]]--
 				end
 			else
 				local WorkToDo = AISteps[1]
@@ -499,11 +645,15 @@ function cobalt.update( dt )
 					nationSelectedForGUI = nationSelectedForPlaying
 					nationSelectedForTurn = nationSelectedForPlaying
 					
-					for k,v in pairs(nations[nationSelectedForPlaying]["Cities"]) do
+					for k,v in pairs(nations[nationSelectedForPlaying]["Buildings"]) do
 						if v.Work == "BuildCruise" then
 							v.Cruise = v.Cruise + 1
 						elseif v.Work == "BuildNuke" then
 							v.Nukes = v.Nukes + 1
+						elseif v.Work == "RaiseDEFCON" then
+							if DEFCON > 1 then
+								DEFCON = DEFCON - 1
+							end
 						end
 					end
 				end
@@ -513,52 +663,73 @@ function cobalt.update( dt )
 end
 
 function cobalt.draw()
-	if nationSelectedForGUI and nations[nationSelectedForGUI] then
-		local N = nations[nationSelectedForGUI]
-		cobalt.application.view:drawSurface(1,1,N["Image"])
+	if CommandCenterGUI then
+		cobalt.ui.draw()
 		
-		local Npop = 0
-		for k,v in pairs(N["Cities"]) do
-			term.setTextColor(colors.white)
-			cobalt.graphics.print(v["Icon"],v["X"],v["Y"])
-			Npop = Npop + v["Population"]
+		cobalt.application.view:drawSurface(3,math.floor(19/2)-2,worldMap)
+	else
+		if nationSelectedForGUI and nations[nationSelectedForGUI] then
+			local N = nations[nationSelectedForGUI]
+			cobalt.application.view:drawSurface(1,1,N["Image"])
+			
+			if gridToggle then
+				for i=1,51 do
+					for j=1,19 do
+						if checkLegalBuildingSite(i,j) then
+							cobalt.graphics.print("+",i,j,nil,N["Color"])
+						end
+					end
+				end
+			end
+			
+			local Npop = 0
+			for k,v in pairs(N["Cities"]) do
+				cobalt.graphics.print(v["Icon"],v["X"],v["Y"],N["Color"],colors.white)
+				Npop = Npop + v["Population"]
+			end
+			
+			for k,v in pairs(N["Buildings"]) do
+				if v["type"] == "command" then
+					cobalt.graphics.print(v["Icon"],v["X"],v["Y"],N["Color"],colors.white)
+				end
+			end
+			
+			cobalt.graphics.center(nationSelectedForGUI.." - "..renderPop(Npop).." - "..renderPop(N["Resources"]).."$",1,0,51,colors.black,colors.white)
 		end
 		
-		cobalt.graphics.center(nationSelectedForGUI.." - "..renderPop(Npop),1,0,51,colors.black,colors.white)
-	end
-	
-	for k,v in pairs(Animations) do
-		if v.Type == "NukeAway" then
-			cobalt.graphics.print("^",v.X,v.Y-v.step)
-			--[[for i=1,v.step do
-				cobalt.graphics.print("@",v.X,v.Y-i+1,colors.black,colors.gray)
-			end]]--
-		elseif v.Type == "NukeSuccess" then
-			if v.step <= 10 then
-				cobalt.graphics.print("V",v.X,v.Y-10+v.step)
-			end
-			if v.step > 10 then cobalt.graphics.print("@",v.X,v.Y,colors.red,colors.orange) end
-			if v.step > 12 then cobalt.graphics.print("@",v.X-1,v.Y,colors.red,colors.orange) cobalt.graphics.print("@",v.X+1,v.Y,colors.red,colors.orange) cobalt.graphics.print("@",v.X,v.Y-1,colors.red,colors.orange) end
-			if v.step > 14 then cobalt.graphics.print("@",v.X,v.Y-2,colors.red,colors.orange) end
-			if v.step > 16 then cobalt.graphics.print("@",v.X-1,v.Y-3,colors.red,colors.orange) cobalt.graphics.print("@",v.X,v.Y-3,colors.red,colors.orange) cobalt.graphics.print("@",v.X+1,v.Y-3,colors.red,colors.orange) end
-			if v.step > 18 then cobalt.graphics.print("@",v.X-1,v.Y-4,colors.red,colors.orange) cobalt.graphics.print("@",v.X,v.Y-4,colors.red,colors.orange) cobalt.graphics.print("@",v.X+1,v.Y-4,colors.red,colors.orange) end
-		elseif v.Type == "NukeFailure" then
-			if v.step <= 6 then
-				cobalt.graphics.print("V",v.X,v.Y-10+v.step)
-			end
-			if v.step > 2 and v.step <= 6 then
-				cobalt.graphics.print("^",v.X,v.Y-v.step+2)
-			end
-			if v.step > 6 then
-				cobalt.graphics.print("*",v.X,v.Y-4,colors.black,colors.orange)
+		for k,v in pairs(Animations) do
+			if v.Type == "NukeAway" then
+				cobalt.graphics.print("^",v.X,v.Y-v.step)
+				--[[for i=1,v.step do
+					cobalt.graphics.print("@",v.X,v.Y-i+1,colors.black,colors.gray)
+				end]]--
+			elseif v.Type == "NukeSuccess" then
+				if v.step <= 10 then
+					cobalt.graphics.print("V",v.X,v.Y-10+v.step)
+				end
+				if v.step > 10 then cobalt.graphics.print("@",v.X,v.Y,colors.red,colors.orange) end
+				if v.step > 12 then cobalt.graphics.print("@",v.X-1,v.Y,colors.red,colors.orange) cobalt.graphics.print("@",v.X+1,v.Y,colors.red,colors.orange) cobalt.graphics.print("@",v.X,v.Y-1,colors.red,colors.orange) end
+				if v.step > 14 then cobalt.graphics.print("@",v.X,v.Y-2,colors.red,colors.orange) end
+				if v.step > 16 then cobalt.graphics.print("@",v.X-1,v.Y-3,colors.red,colors.orange) cobalt.graphics.print("@",v.X,v.Y-3,colors.red,colors.orange) cobalt.graphics.print("@",v.X+1,v.Y-3,colors.red,colors.orange) end
+				if v.step > 18 then cobalt.graphics.print("@",v.X-1,v.Y-4,colors.red,colors.orange) cobalt.graphics.print("@",v.X,v.Y-4,colors.red,colors.orange) cobalt.graphics.print("@",v.X+1,v.Y-4,colors.red,colors.orange) end
+			elseif v.Type == "NukeFailure" then
+				if v.step <= 6 then
+					cobalt.graphics.print("V",v.X,v.Y-10+v.step)
+				end
+				if v.step > 2 and v.step <= 6 then
+					cobalt.graphics.print("^",v.X,v.Y-v.step+2)
+				end
+				if v.step > 6 then
+					cobalt.graphics.print("*",v.X,v.Y-4,colors.black,colors.orange)
+				end
 			end
 		end
+		
+		cobalt.ui.draw()
+		
+		cobalt.graphics.print(turnString,52-turnString:len(),1)
+		--cobalt.graphics.print(MX..";"..MY,1,19)
 	end
-	
-	cobalt.ui.draw()
-	
-	cobalt.graphics.print(turnString,52-turnString:len(),1)
-	--cobalt.graphics.print(MX..";"..MY,1,19)
 end
 
 function cobalt.mousepressed( x, y, button )
@@ -566,70 +737,183 @@ function cobalt.mousepressed( x, y, button )
 	
 	cobalt.ui.mousepressed(x,y,button)
 	
-	if nationSelectedForGUI and nations[nationSelectedForGUI] then
-		local N = nations[nationSelectedForGUI]
-		local clickOut = true
-		if x >= ContextPanel.x and x <= ContextPanel.x+ContextPanel.w-1 and y >= ContextPanel.y and y <= ContextPanel.y+ContextPanel.h-1 then
-			clickOut = false
-		else
-			for k,v in pairs(N["Cities"]) do
-				if v["X"] == x and v["Y"] == y then
-					if not ContextDisabled then
-						ContextSelected = v
-						ContextPanel.backColour = colors.red
-						ContextLabels[1].text = k
-						ContextLabels[2].text = "Pop: "..renderPop(v["Population"])
-						ContextLabels[3].text = "Nukes: "..v["Nukes"]
-						ContextLabels[4].text = "Cruise: "..v["Cruise"]
-						if nationSelectedForGUI ~= nationSelectedForPlaying then
-							ContextPanel.backColour = colors.red
-							ContextLabels[1].backColour = colors.red
-							ContextLabels[2].backColour = colors.red
-							ContextLabels[3].backColour = colors.red
-							ContextLabels[4].backColour = colors.red
-							for i=1,2 do
-								ContextButtons[i]["backColour"] = colors.red
-								if ContextMenu["Enemy"][i] then
-									ContextButtons[i]["text"] = ContextMenu["Enemy"][i]["Text"]
-								else
-									ContextButtons[i]["text"] = ""
+	if StrategicCommandCenterPlaced then
+		if nationSelectedForGUI and nations[nationSelectedForGUI] then
+			local N = nations[nationSelectedForGUI]
+			local clickOut = true
+			if x >= ContextPanel.x and x <= ContextPanel.x+ContextPanel.w-1 and y >= ContextPanel.y and y <= ContextPanel.y+ContextPanel.h-1 then
+				clickOut = false
+			else
+				local cityFound = false
+				for k,v in pairs(N["Cities"]) do
+					if v["X"] == x and v["Y"] == y then
+						if not ContextDisabled then
+							cityFound = true
+							ContextSelected = v
+							ContextPanel.backColour = nations[nationSelectedForGUI]["Color"]
+							ContextLabels[1].text = k
+							ContextLabels[2].text = "Pop: "..renderPop(v["Population"])
+							ContextLabels[3].text = "Income: "..renderPop( (v["Population"] /(DEFCON/5) ) /5 )
+							ContextLabels[4].text = ""
+							
+							ContextPanel.backColour = nations[nationSelectedForGUI]["Color"]
+							ContextLabels[1].backColour = nations[nationSelectedForGUI]["Color"]
+							ContextLabels[2].backColour = nations[nationSelectedForGUI]["Color"]
+							ContextLabels[3].backColour = nations[nationSelectedForGUI]["Color"]
+							ContextLabels[4].backColour = nations[nationSelectedForGUI]["Color"]
+							
+							--ContextLabels[3].text = "Nukes: "..v["Nukes"]
+							--ContextLabels[4].text = "Cruise: "..v["Cruise"]
+							if nationSelectedForGUI ~= nationSelectedForPlaying then
+								for i=1,2 do
+									ContextButtons[i]["backColour"] = nations[nationSelectedForGUI]["Color"]
+									if ContextMenu["Enemy"][i] then
+										ContextButtons[i]["text"] = ContextMenu["Enemy"][i]["Text"]
+									else
+										ContextButtons[i]["text"] = ""
+									end
+									ContextButtons[i].onclick = function() ContextMenu["Enemy"][i]["Function"](v) end
+								end
+							else
+								for i=1,2 do
+									ContextButtons[i]["backColour"] = nations[nationSelectedForGUI]["Color"]
+									if ContextMenu["You"][i] then
+										ContextButtons[i]["text"] = ContextMenu["You"][i]["Text"]
+									else
+										ContextButtons[i]["text"] = ""
+									end
+									ContextButtons[i].onclick = function() ContextMenu["You"][i]["Function"](v) end
 								end
 							end
-						else
-							ContextPanel.backColour = colors.blue
-							ContextLabels[1].backColour = colors.blue
-							ContextLabels[2].backColour = colors.blue
-							ContextLabels[3].backColour = colors.blue
-							ContextLabels[4].backColour = colors.blue
-							for i=1,2 do
-								ContextButtons[i]["backColour"] = colors.blue
-								if ContextMenu["You"][i] then
-									ContextButtons[i]["text"] = ContextMenu["You"][i]["Text"]
-								else
-									ContextButtons[i]["text"] = ""
+						
+							local xF = x+1
+							local yF = y
+							
+							if x+ContextPanel.w >= 51 then xF = x-ContextPanel.w end
+							if y+ContextPanel.h >= 19 then yF = y-ContextPanel.h end
+							
+							ContextPanel.x = xF
+							ContextPanel.y = yF
+							clickOut = false
+						elseif ContextOverride then
+							ContextOverride(v)
+						end
+					end
+				end
+				if not cityFound then -- We didn't click on a city.. Maybe we clicked on a military building?
+					for k,v in pairs(N["Buildings"]) do
+						if v["X"] == x and v["Y"] == y then
+							if not ContextDisabled then
+								cityFound = true
+								ContextSelected = v
+								ContextPanel.backColour = nations[nationSelectedForGUI]["Color"]
+								if v["type"] == "command" then
+									ContextLabels[1].text = "Command"
+									ContextLabels[2].text = "Center"
+									ContextLabels[3].text = "Health: "..tostring(v["health"])
+									ContextLabels[4].text = ""
 								end
+								
+								ContextPanel.backColour = nations[nationSelectedForGUI]["Color"]
+								ContextLabels[1].backColour = nations[nationSelectedForGUI]["Color"]
+								ContextLabels[2].backColour = nations[nationSelectedForGUI]["Color"]
+								ContextLabels[3].backColour = nations[nationSelectedForGUI]["Color"]
+								ContextLabels[4].backColour = nations[nationSelectedForGUI]["Color"]
+								
+								--ContextLabels[3].text = "Nukes: "..v["Nukes"]
+								--ContextLabels[4].text = "Cruise: "..v["Cruise"]
+								if nationSelectedForGUI ~= nationSelectedForPlaying then
+									for i=1,2 do
+										ContextButtons[i]["backColour"] = nations[nationSelectedForGUI]["Color"]
+										if ContextMenu["Enemy"][ v["type"] ] and ContextMenu["Enemy"][ v["type"] ][i] then
+											ContextButtons[i]["text"] = ContextMenu["Enemy"][ v["type"] ][i]["Text"]
+										else
+											ContextButtons[i]["text"] = ""
+										end
+										ContextButtons[i].onclick = function() ContextMenu["Enemy"][ v["type"] ][i]["Function"](v) end
+									end
+								else
+									for i=1,2 do
+										ContextButtons[i]["backColour"] = nations[nationSelectedForGUI]["Color"]
+										if ContextMenu["You"][ v["type"] ] and ContextMenu["You"][ v["type"] ][i] then
+											ContextButtons[i]["text"] = ContextMenu["You"][ v["type"] ][i]["Text"]
+										else
+											ContextButtons[i]["text"] = ""
+										end
+										ContextButtons[i].onclick = function() ContextMenu["You"][ v["type"] ][i]["Function"](v) end
+									end
+								end
+							
+								local xF = x+1
+								local yF = y
+								
+								if x+ContextPanel.w >= 51 then xF = x-ContextPanel.w end
+								if y+ContextPanel.h >= 19 then yF = y-ContextPanel.h end
+								
+								ContextPanel.x = xF
+								ContextPanel.y = yF
+								clickOut = false
+							elseif ContextOverride then
+								ContextOverride(v)
 							end
 						end
-					
-						local xF = x+1
-						local yF = y
-						
-						if x+ContextPanel.w >= 51 then xF = x-ContextPanel.w end
-						if y+ContextPanel.h >= 19 then yF = y-ContextPanel.h end
-						
-						ContextPanel.x = xF
-						ContextPanel.y = yF
-						clickOut = false
-					elseif ContextOverride then
-						ContextOverride(v)
 					end
 				end
 			end
+			if clickOut then
+				ContextSelected = nil
+				ContextPanel.x = -100
+				ContextPanel.y = -100
+			end
 		end
-		if clickOut then
-			ContextSelected = nil
-			ContextPanel.x = -100
-			ContextPanel.y = -100
+	else -- We need to place the strategic command center first
+		if nationSelectedForPlaying == nationSelectedForGUI then
+			local cityFound = false
+			for k,v in pairs(nations[nationSelectedForPlaying]["Cities"]) do
+				if v["X"] == x and v["Y"] == y then cityFound = true end
+			end
+			
+			if cityFound then
+				AlertPanel.backColour = nations[nationSelectedForPlaying]["Color"]
+				AlertText.backColour = nations[nationSelectedForPlaying]["Color"]
+				AlertText.foreColour = colors.white
+				AlertText.text = "You can't build in a city. Choose another site."
+				AlertPanel.state = "_ALL"
+				AlertText.state = "_ALL"
+				AlertTimer = 10
+			elseif (StrategicCommandCenterPosition["X"] ~= x) or (StrategicCommandCenterPosition["Y"] ~= y) then
+				if checkLegalBuildingSite(x,y) then
+					StrategicCommandCenterPosition = {
+						["X"] = x,
+						["Y"] = y,
+					}
+					--[[table.insert(nations[nationSelectedForPlaying]["Buildings"],{
+						["X"] = x,
+						["Y"] = y,
+						["type"] = "command",
+						["health"] = 3,
+					})]]--
+					AlertPanel.backColour = nations[nationSelectedForPlaying]["Color"]
+					AlertText.backColour = nations[nationSelectedForPlaying]["Color"]
+					AlertText.foreColour = colors.white
+					AlertText.text = "Please click the location again to confirm."
+					AlertPanel.state = "_ALL"
+					AlertText.state = "_ALL"
+					AlertTimer = 10
+				end
+			elseif (StrategicCommandCenterPosition["X"] == x) or (StrategicCommandCenterPosition["Y"] == y) then
+				table.insert(nations[nationSelectedForPlaying]["Buildings"],{
+					["X"] = x,
+					["Y"] = y,
+					["type"] = "command",
+					["cruise"] = 0,
+					["nukes"] = 0,
+					["health"] = 3,
+					["Icon"] = "A",
+					["Work"] = false,
+				})
+				StrategicCommandCenterPlaced = true
+			end
 		end
 	end
 end
@@ -639,7 +923,98 @@ function cobalt.mousereleased( x, y, button )
 end
 
 function cobalt.keypressed( keycode, key )
-
+	if string.lower(key) == "q" then
+		if StrategicCommandCenterPlaced then
+			if CommandCenterGUI == false then
+				CommandCenterGUI = true
+				ContextDisabled = true
+				
+				NextTurnPanel.state = false
+				MainPanel.state = false
+				
+				CommandCenterPanel.state = "_ALL"
+				CommandCenterBack.state = "_ALL"
+				CommandCenterMapBackDrop.backColour = nations[nationSelectedForPlaying]["Color"]
+				CommandCenterMapBackDrop.state = "_ALL"
+				
+				CommandCenterDEFCON5.backColour = colors.gray
+				CommandCenterDEFCON4.backColour = colors.gray
+				CommandCenterDEFCON3.backColour = colors.gray
+				CommandCenterDEFCON2.backColour = colors.gray
+				CommandCenterDEFCON1.backColour = colors.gray
+				
+				CommandCenterDEFCON5Text.backColour = colors.gray
+				CommandCenterDEFCON4Text.backColour = colors.gray
+				CommandCenterDEFCON3Text.backColour = colors.gray
+				CommandCenterDEFCON2Text.backColour = colors.gray
+				CommandCenterDEFCON1Text.backColour = colors.gray
+				
+				if DEFCON == 5 then
+					CommandCenterDEFCON5.backColour = colors.blue
+					CommandCenterDEFCON5Text.backColour = colors.blue
+				elseif DEFCON == 4 then
+					CommandCenterDEFCON4.backColour = colors.green
+					CommandCenterDEFCON4Text.backColour = colors.green
+				elseif DEFCON == 3 then
+					CommandCenterDEFCON3.backColour = colors.orange
+					CommandCenterDEFCON3Text.backColour = colors.orange
+				elseif DEFCON == 2 then
+					CommandCenterDEFCON2.backColour = colors.red
+					CommandCenterDEFCON2Text.backColour = colors.red
+				elseif DEFCON == 1 then
+					CommandCenterDEFCON1.backColour = colors.white
+					CommandCenterDEFCON1Text.backColour = colors.white
+				end
+			else
+				CommandCenterGUI = false
+				ContextDisabled = false
+				
+				NextTurnPanel.state = "_ALL"
+				MainPanel.state = "_ALL"
+				
+				CommandCenterPanel.state = false
+				CommandCenterBack.state = false
+				CommandCenterMapBackDrop.state = false
+			end
+		else
+			AlertPanel.backColour = nations[nationSelectedForPlaying]["Color"]
+			AlertText.backColour = nations[nationSelectedForPlaying]["Color"]
+			AlertText.foreColour = colors.white
+			AlertText.text = "Build your strategic command center"
+			AlertPanel.state = "_ALL"
+			AlertText.state = "_ALL"
+			AlertTimer = 10
+		end
+	end
+	
+	if keycode == 15 then -- tab
+		ContextSelected = nil
+		ContextPanel.x = -100
+		ContextPanel.y = -100
+		if nationSelectedForPlaying == nationSelectedForGUI then
+			nationSelectedForGUI = nationSelectedForFighting
+		else
+			nationSelectedForGUI = nationSelectedForPlaying
+		end
+	end
+	
+	if keycode == 57 then -- spacebar
+		if StrategicCommandCenterPlaced then
+			TURNOVER = true
+		else
+			AlertPanel.backColour = nations[nationSelectedForPlaying]["Color"]
+			AlertText.backColour = nations[nationSelectedForPlaying]["Color"]
+			AlertText.foreColour = colors.white
+			AlertText.text = "Build your strategic command center"
+			AlertPanel.state = "_ALL"
+			AlertText.state = "_ALL"
+			AlertTimer = 10
+		end
+	end
+	
+	if string.lower(key) == "v" then
+		gridToggle = not gridToggle
+	end
 end
 
 function cobalt.keyreleased( keycode, key )
@@ -649,5 +1024,13 @@ end
 function cobalt.textinput( t )
 
 end
+
+AlertPanel.backColour = nations[nationSelectedForPlaying]["Color"]
+AlertText.backColour = nations[nationSelectedForPlaying]["Color"]
+AlertText.foreColour = colors.white
+AlertText.text = "Build your strategic command center"
+AlertPanel.state = "_ALL"
+AlertText.state = "_ALL"
+AlertTimer = 10
 
 cobalt.initLoop()
