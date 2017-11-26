@@ -1,7 +1,7 @@
 -- Cold War Simulator by Saldor010
 
 local args = {...}
-if not fs.exists("cobalt") and not fs.exists(args[1]) then
+if not fs.exists("cobalt") and (not args[1] or not fs.exists(args[1])) then
 	 term.setTextColor(colors.red)
     print("Cobalt could not be found on this machine. Cobalt is required to run this game.")
     term.setTextColor(colors.lime)
