@@ -24,7 +24,6 @@ local surfaceFileToBeRead = surfaceFileToBeReadHANDLE.readAll()
 local newFile = nil
 if not string.find(surfaceFileToBeRead,"local create = surface.create") then
 	local ch = string.find(surfaceFileToBeRead,"function surface.load")
-	print(ch)
 	local firstSub = string.sub(surfaceFileToBeRead,1,ch-1)
 	local secondSub = string.sub(surfaceFileToBeRead,ch)
 	newFile = firstSub.."local create = surface.create\n\n"..secondSub
