@@ -655,13 +655,25 @@ local MainPanel = cobalt.ui.new({w=4,h=1})
 
 local SwapViewButton = MainPanel:add("button",{w=4,h=1,text="View",foreColour = colors.white,backColour = colors.grey})
 SwapViewButton.onclick = function()
-	ContextSelected = nil
-	ContextPanel.x = -100
-	ContextPanel.y = -100
-	if nationSelectedForPlaying == nationSelectedForGUI then
-		nationSelectedForGUI = nationSelectedForFighting
+	if ContextPopUpBG.state == "_ALL" then
+		FlashContextPopUp()
+	elseif StrategicCommandCenterPlaced then	
+		ContextSelected = nil
+		ContextPanel.x = -100
+		ContextPanel.y = -100
+		if nationSelectedForPlaying == nationSelectedForGUI then
+			nationSelectedForGUI = nationSelectedForFighting
+		else
+			nationSelectedForGUI = nationSelectedForPlaying
+		end
 	else
-		nationSelectedForGUI = nationSelectedForPlaying
+		AlertPanel.backColour = nations[nationSelectedForPlaying]["Color"]
+		AlertText.backColour = nations[nationSelectedForPlaying]["Color"]
+		AlertText.foreColour = colors.white
+		AlertText.text = "Build your strategic command center"
+		AlertPanel.state = "_ALL"
+		AlertText.state = "_ALL"
+		AlertTimer = 10
 	end
 end
 
@@ -669,7 +681,7 @@ local MX,MY = 0,0
 
 local function checkLegalBuildingSite(x,y)
 	if nations[nationSelectedForGUI] and nations[nationSelectedForGUI]["Color"] then
-		if (cobalt.application.view.buffer[((y - 1) * 51 + x) * 3 - 1] == nations[nationSelectedForGUI]["Color"]) or (cobalt.application.view.buffer[((y - 1) * 51 + x) * 3 - 1] == colors.black) or (y >= 18 and x <= 14) then
+		if (cobalt.application.view.buffer[((y - 1) * 51 + x) * 3 - 1] == nations[nationSelectedForGUI]["Color"]) or (cobalt.application.view.buffer[((y - 1) * 51 + x) * 3 - 1] == colors.black) or (y >= 18 and x <= 14) or (y == 1) then
 			return false
 		else
 			return true
@@ -1377,13 +1389,25 @@ function cobalt.keypressed( keycode, key )
 	end
 	
 	if keycode == 15 then -- tab
-		ContextSelected = nil
-		ContextPanel.x = -100
-		ContextPanel.y = -100
-		if nationSelectedForPlaying == nationSelectedForGUI then
-			nationSelectedForGUI = nationSelectedForFighting
+		if ContextPopUpBG.state == "_ALL" then
+			FlashContextPopUp()
+		elseif StrategicCommandCenterPlaced then	
+			ContextSelected = nil
+			ContextPanel.x = -100
+			ContextPanel.y = -100
+			if nationSelectedForPlaying == nationSelectedForGUI then
+				nationSelectedForGUI = nationSelectedForFighting
+			else
+				nationSelectedForGUI = nationSelectedForPlaying
+			end
 		else
-			nationSelectedForGUI = nationSelectedForPlaying
+			AlertPanel.backColour = nations[nationSelectedForPlaying]["Color"]
+			AlertText.backColour = nations[nationSelectedForPlaying]["Color"]
+			AlertText.foreColour = colors.white
+			AlertText.text = "Build your strategic command center"
+			AlertPanel.state = "_ALL"
+			AlertText.state = "_ALL"
+			AlertTimer = 10
 		end
 	end
 	
