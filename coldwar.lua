@@ -17,6 +17,26 @@ if not fs.exists("cobalt") and (not args[1] or not fs.exists(args[1])) then
     end
     error()
 end
+
+-- PATCHING THE COBALT SURFACE FILE AUTOMAGICALLY
+local surfaceFileToBeReadHANDLE = fs.open("cobalt-lib/surface","r")
+local surfaceFileToBeRead = surfaceFileToBeReadHANDLE.readAll()
+local newFile = nil
+if not string.find(surfaceFileToBeRead,"local create = surface.create") then
+	local ch = string.find(surfaceFileToBeRead,"function surface.load")
+	print(ch)
+	local firstSub = string.sub(surfaceFileToBeRead,1,ch-1)
+	local secondSub = string.sub(surfaceFileToBeRead,ch)
+	newFile = firstSub.."local create = surface.create\n\n"..secondSub
+end
+surfaceFileToBeReadHANDLE.close()
+if newFile then
+	local surfaceFileToBeRewritten = fs.open("cobalt-lib/surface","w")
+	surfaceFileToBeRewritten.write(newFile)
+	surfaceFileToBeRewritten.close()
+end
+-- Done patching
+
 local cobalt = dofile(args[1] or "cobalt")
 cobalt.ui = dofile("cobalt-ui/init.lua")
 
@@ -205,13 +225,19 @@ table.insert(nations["China"]["Buildings"],{
 	["Work"] = false,
 })
 
+-- Stole from here http://www.computercraft.info/forums2/index.php?/topic/10279-question-how-to-get-current-dir/
+-- I doubt originalbit cares though, since he's been AFK for.. (checking his forum profile).. Yeah, pretty much a year now
+local runningProgram = shell.getRunningProgram()
+local programName = fs.getName(runningProgram)
+local workingDirectory = runningProgram:sub( 1, #runningProgram - #programName )
+print(workingDirectory)
 for k,v in pairs(nations) do
 	local Napop = 0
 	
-	if fs.exists(v["Image"]) then
-		v["Image"] = cobalt.surface.load(v["Image"])
+	if fs.exists(workingDirectory..v["Image"]) then
+		v["Image"] = cobalt.surface.load(workingDirectory..v["Image"])
 	else
-		error("Missing image : "..v["Image"])
+		error("Missing image : "..workingDirectory..v["Image"])
 	end
 	
 	for p,b in pairs(v["Cities"]) do
@@ -222,10 +248,10 @@ for k,v in pairs(nations) do
 end
 
 local worldMap = nil
-if fs.exists("worldmap.nfp") then
-	worldMap = cobalt.surface.load("worldmap.nfp")
+if fs.exists(workingDirectory.."worldmap.nfp") then
+	worldMap = cobalt.surface.load(workingDirectory.."worldmap.nfp")
 else
-	error("Missing image : ".."worldmap.nfp")
+	error("Missing image : "..workingDirectory.."worldmap.nfp")
 end
 
 local nationSelectedForPlaying = "United States"
