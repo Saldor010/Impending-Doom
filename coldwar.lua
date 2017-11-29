@@ -1,5 +1,5 @@
 -- Cold War Simulator by Saldor010
-local SoftwareVERSION = "Alpha 3.0"
+local SoftwareVERSION = "Alpha 3.1"
 
 local args = {...}
 if not fs.exists("cobalt") and (not args[1] or not fs.exists(args[1])) then
@@ -228,7 +228,7 @@ table.insert(nations["China"]["Buildings"],{
 local runningProgram = shell.getRunningProgram()
 local programName = fs.getName(runningProgram)
 local workingDirectory = runningProgram:sub( 1, #runningProgram - #programName )
-print(workingDirectory)
+
 for k,v in pairs(nations) do
 	local Napop = 0
 	
@@ -583,7 +583,7 @@ local ContextMenu = {
 			end,
 		},
 		
-		["command"] = {
+		--[[["command"] = {
 			[1] = {
 				["Text"] = "View",
 				["Function"] = function(baseName,base)
@@ -607,14 +607,14 @@ local ContextMenu = {
 					}
 					
 					if base.Work == "RaiseDEFCON" then
-						t["info"] = "Raising the DEFCON level.."
+						t["info"] = "Lowering the DEFCON level.."
 					else
 						t["info"] = "Sitting idle. Assign work for us to do!"
 					end
 					ContextPopUp(t)
 				end,
 			},
-		}
+		}]]--
 	},
 	["Enemy"] = { -- Clicking on enemy cities
 		[1] = {
@@ -1460,7 +1460,7 @@ function cobalt.mousepressed( x, y, button )
 										["label2"] = "Activate",
 										["function"] = function()
 											if DEFCON > 1 then
-												ContextPopUpSTATUSLABEL.text = "Scheming and bribing to lower DEFCON"
+												ContextPopUpSTATUSLABEL.text = "Preparing to lower DEFCON.."
 												v["Work"] = "RaiseDEFCON"
 											else
 												ContextPopUpSTATUSLABEL.text = "We're already in a nuclear war!"
@@ -1482,7 +1482,7 @@ function cobalt.mousepressed( x, y, button )
 								end
 								
 								if v["Work"] == "RaiseDEFCON" then
-									t["info"] = "Raising the DEFCON level.."
+									t["info"] = "Preparing to lower DEFCON.."
 								else
 									t["info"] = "Sitting idle. Assign work for us to do!"
 								end
