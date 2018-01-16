@@ -1,5 +1,5 @@
 -- Cold War Simulator by Saldor010
-local SoftwareVERSION = "Alpha 4.0"
+local SoftwareVERSION = "Alpha 4.1"
 
 local args = {...}
 if not term.isColor() then
@@ -824,17 +824,19 @@ local buildings = {
 		["mb1click"] = function(v,k,n) 
 			local t = {
 				["topLabel"] = "Construction Yard",
-				["button1"] = {
-					["label1"] = "Refund Bldg.",
-					["label2"] = "+$"..renderPop(v["Cost"]),
-					["function"] = function()
-						n["Resources"] = n["Resources"] + v["Cost"]
-						n["Buildings"][k] = nil
-						ContextPopUpBG.state = false
-					end,
-					["help"] = function()
-					
-					end,
+				["buttons"] = {
+					[1] = {
+						["label1"] = "Refund Bldg.",
+						["label2"] = "+$"..renderPop(v["Cost"]),
+						["function"] = function()
+							n["Resources"] = n["Resources"] + v["Cost"]
+							n["Buildings"][k] = nil
+							ContextPopUpBG.state = false
+						end,
+						["help"] = function()
+						
+						end,
+					},
 				},
 				["status1"] = "Building "..v["Work"],
 				["status2"] = "",
