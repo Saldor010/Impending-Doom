@@ -1,25 +1,43 @@
 -- Cold War Simulator by Saldor010
-local SoftwareVERSION = "Alpha 3.1"
+local SoftwareVERSION = "Alpha 4.0"
 
 local args = {...}
+if not term.isColor() then
+	print("Error! Impending Doom requires an advanced (gold) computer to run. Sorry :(")
+end
 if not fs.exists("cobalt") and (not args[1] or not fs.exists(args[1])) then
-	 term.setTextColor(colors.red)
+	term.setTextColor(colors.red)
     print("Cobalt could not be found on this machine. Cobalt is required to run this game.")
     term.setTextColor(colors.lime)
-    print("To download cobalt, please press the Y key now.")
-    term.setTextColor(colors.blue)
-    print("If you already have cobalt, and we just can't find it, please supply the path as the second argument.")
+    print("To download cobalt, please press the Y key now. Press any other key to cancel.")
+    term.setTextColor(colors.orange)
+    print("Cobalt UI is required for this game to run, so press Y when asked to install the package.")
     local ev,p1,p2,p3,p4,p5 = os.pullEvent("char")
     if string.lower(p1) == "y" then
-        shell.run("pastebin","run","h5h4fm3t")
+		local a = http.get("http://pastebin.com/raw/h5h4fm3t")
+		if a then
+			local b = a.readAll()
+			a.close()
+			loadstring(b)()
+		else
+			term.setTextColor(colors.red)
+			print("Error! Could not access pastebin.")
+			term.setTextColor(colors.orange)
+			print("You may attempt a manual installation by running the following command to the shell:")
+			term.setTextColor(colors.white)
+			print("pastebin run h5h4fm3t")
+			error()
+		end
+        --shell.run("pastebin","run","h5h4fm3t")
     else
         term.setTextColor(colors.red)
         print("Cancelled installation of Cobalt.")
+		error()
     end
-    error()
 end
 
 -- PATCHING THE COBALT SURFACE FILE AUTOMAGICALLY
+-- This patch is no longer needed now that cobalt has been updated. I may remove this later as a result.
 local surfaceFileToBeReadHANDLE = fs.open("cobalt-lib/surface","r")
 local surfaceFileToBeRead = surfaceFileToBeReadHANDLE.readAll()
 local newFile = nil
@@ -42,10 +60,102 @@ cobalt.ui = dofile("cobalt-ui/init.lua")
 
 local gameRunning = false
 local game = nil -- I'll use this variable later for.. something?
-local options = {
-	["BeginnerAlerts"] = true
-}
 
+-- Stole from here http://www.computercraft.info/forums2/index.php?/topic/10279-question-how-to-get-current-dir/
+-- I doubt originalbit cares though, since he's been AFK for.. (checking his forum profile).. Yeah, pretty much a year now
+local runningProgram = shell.getRunningProgram()
+local programName = fs.getName(runningProgram)
+local workingDirectory = runningProgram:sub( 1, #runningProgram - #programName )
+
+if not fs.exists(workingDirectory.."config.cfg") then
+	local f = fs.open(workingDirectory.."config.cfg","w")
+	f.write([[# Impending Doom Config
+# The cfg interpreter is somewhat forgiving, so long as you remember not to leave any extra lines or equal (=) signs lying around.
+# - Saldor010
+BeginnerAlerts=true]])
+	f.close()
+end
+local function parseCFG(line)
+	if string.sub(line,1,1) == "#" then return false,false,true end
+	local equals = string.find(line,"=")
+	if not equals then
+		return false
+	else
+		-- Remove all spaces between the start of the line and the start of the variable name
+		while true do if string.sub(line,1,1) == " " then line = string.sub(line,2) else break end end
+		-- Remove all spaces between the end of the variable name and the equals sign
+		while true do if string.sub(line,equals-1,equals-1) == " " then line = string.sub(line,1,equals-2)..string.sub(line,equals) equals = string.find(line,"=") else break end end
+		-- Remove all spaces between the equals sign and the value
+		while true do if string.sub(line,equals+1,equals+1) == " " then line = string.sub(line,1,equals)..string.sub(line,equals+2) equals = string.find(line,"=") else break end end
+		-- Remove all spaces between the value and the end of the line
+		while true do if string.sub(line,#line,#line) == " " then line = string.sub(line,1,#line-1) else break end end
+		equals = string.find(line,"=")
+		local vName = string.sub(line,1,equals-1)
+		local vValue = string.sub(line,equals+1)
+		if tonumber(vValue) then vValue = tonumber(vValue) end
+		if string.lower(tostring(vValue)) == "true" then vValue = true end
+		if string.lower(tostring(vValue)) == "false" then vValue = false end
+		return vName,vValue
+	end
+end
+local options = {}
+local function readCFG()
+	local f = fs.open(workingDirectory.."config.cfg","r")
+	local ct = 0
+	while true do
+		ct = ct + 1
+		local l = f.readLine()
+		if l then
+			local r,rv,com = parseCFG(l)
+			if com then -- It's a comment
+			elseif not r then
+				return false
+			else
+				options[r] = rv
+			end
+		else
+			break
+		end
+	end
+	f.close()
+	return true
+end
+local function writeCFG(key,value)
+	local f = fs.open(workingDirectory.."config.cfg","r")
+	local fa = f.readAll()
+	f.close()
+	local t = string.find(fa,key.."=")
+	if t then
+		local s = string.sub(fa,t)
+		local e = string.find(s,"=")
+		local eof = string.find(s,"\n")
+		if not eof then eof = string.len(s) end
+		fa = string.sub(fa,1,t+e-1)..tostring(value)..string.sub(fa,t+eof)
+		local f = fs.open(workingDirectory.."config.cfg","w")
+		f.write(fa)
+		f.close()
+		readCFG()
+		return true
+	else return false end
+end
+
+local c = readCFG()
+if not c then
+	term.clear()
+	term.setCursorPos(1,1)
+	term.setTextColor(colors.red)
+	print("Invalid config file (Line "..ct..")! Loading default file from memory..")
+	options = {
+		["BeginnerAlerts"] = true,
+	}
+	sleep(1)
+end
+c = nil
+
+local doomapediaEntries = {
+	["Nuclear Missile"] = "Nuclear missiles are offensive weapons that can be used to deal damage against enemy sites and enemy cities. They cost $200K to produce and take one turn to be produced. When used against enemy sites, nuclear missiles deal one unit of damage. When used against enemy cities, nuclear missiles will (under normal circumstances) kill half of the population."
+}
+local doomapediaRedirect = nil
 local StrategicCommandCenterPlaced = false
 local StrategicCommandCenterPosition = {
 	["X"] = 0,
@@ -223,12 +333,6 @@ table.insert(nations["China"]["Buildings"],{
 	["Work"] = false,
 })
 
--- Stole from here http://www.computercraft.info/forums2/index.php?/topic/10279-question-how-to-get-current-dir/
--- I doubt originalbit cares though, since he's been AFK for.. (checking his forum profile).. Yeah, pretty much a year now
-local runningProgram = shell.getRunningProgram()
-local programName = fs.getName(runningProgram)
-local workingDirectory = runningProgram:sub( 1, #runningProgram - #programName )
-
 for k,v in pairs(nations) do
 	local Napop = 0
 	
@@ -284,6 +388,8 @@ local ContextButtons = {
 }
 
 local ContextPopUpBG = cobalt.ui.new({w="70%",h="70%",marginleft="15%",margintop="15%",backColour=colors.white,backColour=colors.white})
+local ContextPopUpButtons = {}
+local ContextPopUpBUTTONINDEX = 0
 --local ContextPopUpBG2 = ContextPopUpBG:add("text",{w=ContextPopUpBG.w,h=ContextPopUpBG.h,x=0,y=0,text=string.rep(string.rep("-",ContextPopUpBG.w).."\n",ContextPopUpBG.h),wrap="left",foreColour=colors.white})
 
 local ContextPopUpTOPLABEL = ContextPopUpBG:add("text",{w=99,h=1,x=0,y=1,text="== Command Center "..string.rep("=",30),foreColour=nations[nationSelectedForGUI]["Color"]})
@@ -309,6 +415,95 @@ local ContextPopUpHelp3 = ContextPopUpBG:add("button",{w=0,h=1,x=34,y=9,text="?"
 local ContextPopUpLabel4 = ContextPopUpBG:add("text",{w=25,h=1,x=35-14,y=11,text="UNUSED",wrap="left",foreColour=nations[nationSelectedForGUI]["Color"],backColour=colors.white})
 local ContextPopUpButton4 = ContextPopUpBG:add("button",{w=10,h=1,x=22,y=12,text="Activate",foreColour=colors.white,backColour=nations[nationSelectedForGUI]["Color"]})
 local ContextPopUpHelp4 = ContextPopUpBG:add("button",{w=0,h=1,x=34,y=12,text="?",foreColour=colors.white,backColour=nations[nationSelectedForGUI]["Color"]})
+
+local ContextPopUpScrollUp = ContextPopUpBG:add("button",{w=0,h=1,x=17,y=11,text="^",foreColour=colors.white,backColour=nations[nationSelectedForGUI]["Color"]})
+local ContextPopUpScrollDown = ContextPopUpBG:add("button",{w=0,h=1,x=17,y=13,text="v",foreColour=colors.white,backColour=nations[nationSelectedForGUI]["Color"]})
+
+local function ContextPopUpREFRESHBUTTONS()
+	if ContextPopUpButtons[ContextPopUpBUTTONINDEX+1] then
+		ContextPopUpLabel1.text = ContextPopUpButtons[ContextPopUpBUTTONINDEX+1]["label1"]
+		ContextPopUpLabel1.x = 34-string.len(ContextPopUpButtons[ContextPopUpBUTTONINDEX+1]["label1"])
+		ContextPopUpButton1.text = ContextPopUpButtons[ContextPopUpBUTTONINDEX+1]["label2"]
+		ContextPopUpButton1.onclick = function() ContextPopUpButtons[ContextPopUpBUTTONINDEX+1]["function"]() end
+		ContextPopUpHelp1.onclick = function() ContextPopUpButtons[ContextPopUpBUTTONINDEX+1]["help"]() end
+		
+		ContextPopUpLabel1.state = "game"
+		ContextPopUpButton1.state = "game"
+		ContextPopUpHelp1.state = "game"
+	else
+		ContextPopUpLabel1.state = false
+		ContextPopUpButton1.state = false
+		ContextPopUpHelp1.state = false
+	end
+	if ContextPopUpButtons[ContextPopUpBUTTONINDEX+2] then
+		ContextPopUpLabel2.text = ContextPopUpButtons[ContextPopUpBUTTONINDEX+2]["label1"]
+		ContextPopUpLabel2.x = 34-string.len(ContextPopUpButtons[ContextPopUpBUTTONINDEX+2]["label1"])
+		ContextPopUpButton2.text = ContextPopUpButtons[ContextPopUpBUTTONINDEX+2]["label2"]
+		ContextPopUpButton2.onclick = function() ContextPopUpButtons[ContextPopUpBUTTONINDEX+2]["function"]() end
+		ContextPopUpHelp2.onclick = function() ContextPopUpButtons[ContextPopUpBUTTONINDEX+2]["help"]() end
+		
+		ContextPopUpLabel2.state = "game"
+		ContextPopUpButton2.state = "game"
+		ContextPopUpHelp2.state = "game"
+	else
+		ContextPopUpLabel2.state = false
+		ContextPopUpButton2.state = false
+		ContextPopUpHelp2.state = false
+	end
+	if ContextPopUpButtons[ContextPopUpBUTTONINDEX+3] then
+		ContextPopUpLabel3.text = ContextPopUpButtons[ContextPopUpBUTTONINDEX+3]["label1"]
+		ContextPopUpLabel3.x = 34-string.len(ContextPopUpButtons[ContextPopUpBUTTONINDEX+3]["label1"])
+		ContextPopUpButton3.text = ContextPopUpButtons[ContextPopUpBUTTONINDEX+3]["label2"]
+		ContextPopUpButton3.onclick = function() ContextPopUpButtons[ContextPopUpBUTTONINDEX+3]["function"]() end
+		ContextPopUpHelp3.onclick = function() ContextPopUpButtons[ContextPopUpBUTTONINDEX+3]["help"]() end
+		
+		ContextPopUpLabel3.state = "game"
+		ContextPopUpButton3.state = "game"
+		ContextPopUpHelp3.state = "game"
+	else
+		ContextPopUpLabel3.state = false
+		ContextPopUpButton3.state = false
+		ContextPopUpHelp3.state = false
+	end
+	if ContextPopUpButtons[ContextPopUpBUTTONINDEX+4] then
+		ContextPopUpLabel4.text = ContextPopUpButtons[ContextPopUpBUTTONINDEX+4]["label1"]
+		ContextPopUpLabel4.x = 34-string.len(ContextPopUpButtons[ContextPopUpBUTTONINDEX+4]["label1"])
+		ContextPopUpButton4.text = ContextPopUpButtons[ContextPopUpBUTTONINDEX+4]["label2"]
+		ContextPopUpButton4.onclick = function() ContextPopUpButtons[ContextPopUpBUTTONINDEX+4]["function"]() end
+		ContextPopUpHelp4.onclick = function() ContextPopUpButtons[ContextPopUpBUTTONINDEX+4]["help"]() end
+		
+		ContextPopUpLabel4.state = "game"
+		ContextPopUpButton4.state = "game"
+		ContextPopUpHelp4.state = "game"
+	else
+		ContextPopUpLabel4.state = false
+		ContextPopUpButton4.state = false
+		ContextPopUpHelp4.state = false
+	end
+	if (#ContextPopUpButtons > 4) and (ContextPopUpBUTTONINDEX >= #ContextPopUpButtons-4) then
+		ContextPopUpScrollUp.state = "game"
+	else
+		ContextPopUpScrollUp.state = false
+	end
+	if #ContextPopUpButtons-4 > ContextPopUpBUTTONINDEX then
+		ContextPopUpScrollDown.state = "game"
+	else
+		ContextPopUpScrollDown.state = false
+	end
+end
+
+ContextPopUpScrollUp.onclick = function()
+	if (#ContextPopUpButtons > 4) and (ContextPopUpBUTTONINDEX >= #ContextPopUpButtons-4) then
+		ContextPopUpBUTTONINDEX = ContextPopUpBUTTONINDEX - 1
+		ContextPopUpREFRESHBUTTONS()
+	end
+end
+ContextPopUpScrollDown.onclick = function()
+	if #ContextPopUpButtons-4 > ContextPopUpBUTTONINDEX then
+		ContextPopUpBUTTONINDEX = ContextPopUpBUTTONINDEX + 1
+		ContextPopUpREFRESHBUTTONS()
+	end
+end
 
 local ContextPopUpEXIT = ContextPopUpBG:add("button",{w=6,h=1,x=2,y="90%",text="Exit",foreColour=colors.white,backColour=nations[nationSelectedForGUI]["Color"]})
 
@@ -350,69 +545,12 @@ local function ContextPopUp(context)
 		ContextPopUpSTATUS3.text = ""
 	end
 	
-	if context["button1"] then
-		ContextPopUpLabel1.text = context["button1"]["label1"]
-		ContextPopUpLabel1.x = 34-string.len(context["button1"]["label1"])
-		ContextPopUpButton1.text = context["button1"]["label2"]
-		ContextPopUpButton1.onclick = function() context["button1"]["function"]() end
-		ContextPopUpHelp1.onclick = function() context["button1"]["help"]() end
-		
-		ContextPopUpLabel1.state = "game"
-		ContextPopUpButton1.state = "game"
-		ContextPopUpHelp1.state = "game"
+	if context["buttons"] then
+		ContextPopUpButtons = context["buttons"]
 	else
-		ContextPopUpLabel1.state = false
-		ContextPopUpButton1.state = false
-		ContextPopUpHelp1.state = false
+		ContextPopUpButtons = {}
 	end
-	
-	if context["button2"] then
-		ContextPopUpLabel2.text = context["button2"]["label1"]
-		ContextPopUpLabel2.x = 34-string.len(context["button2"]["label1"])
-		ContextPopUpButton2.text = context["button2"]["label2"]
-		ContextPopUpButton2.onclick = function() context["button2"]["function"]() end
-		ContextPopUpHelp2.onclick = function() context["button2"]["help"]() end
-		
-		ContextPopUpLabel2.state = "game"
-		ContextPopUpButton2.state = "game"
-		ContextPopUpHelp2.state = "game"
-	else
-		ContextPopUpLabel2.state = false
-		ContextPopUpButton2.state = false
-		ContextPopUpHelp2.state = false
-	end
-	
-	if context["button3"] then
-		ContextPopUpLabel3.text = context["button3"]["label1"]
-		ContextPopUpLabel3.x = 34-string.len(context["button3"]["label1"])
-		ContextPopUpButton3.text = context["button3"]["label2"]
-		ContextPopUpButton3.onclick = function() context["button3"]["function"]() end
-		ContextPopUpHelp3.onclick = function() context["button3"]["help"]() end
-		
-		ContextPopUpLabel3.state = "game"
-		ContextPopUpButton3.state = "game"
-		ContextPopUpHelp3.state = "game"
-	else
-		ContextPopUpLabel3.state = false
-		ContextPopUpButton3.state = false
-		ContextPopUpHelp3.state = false
-	end
-	
-	if context["button4"] then
-		ContextPopUpLabel4.text = context["button4"]["label1"]
-		ContextPopUpLabel4.x = 34-string.len(context["button4"]["label1"])
-		ContextPopUpButton4.text = context["button4"]["label2"]
-		ContextPopUpButton4.onclick = function() context["button4"]["function"]() end
-		ContextPopUpHelp4.onclick = function() context["button4"]["help"]() end
-		
-		ContextPopUpLabel4.state = "game"
-		ContextPopUpButton4.state = "game"
-		ContextPopUpHelp4.state = "game"
-	else
-		ContextPopUpLabel4.state = false
-		ContextPopUpButton4.state = false
-		ContextPopUpHelp4.state = false
-	end
+	ContextPopUpREFRESHBUTTONS()
 	
 	if not context["color"] then
 		context["color"] = nations[nationSelectedForGUI]["Color"]
@@ -508,7 +646,7 @@ local function FireNuke(from,to,playerControlled)
 		["stepLimit"] = 10,
 		["Function"] = function()
 			if playerControlled then nationSelectedForGUI = nationSelectedForFighting else nationSelectedForGUI = nationSelectedForPlaying end
-			if to.Cruise > 0 then
+			if to.cruise and to.cruise > 0 then
 				table.insert(Animations,{
 					["Type"] = "NukeFailure",
 					["X"] = to.X,
@@ -518,7 +656,11 @@ local function FireNuke(from,to,playerControlled)
 					["Function"] = function()
 						to.Cruise = to.Cruise - 1
 						
-						if playerControlled then ContextDisabled = false for k,v in pairs(nations[nationSelectedForPlaying]["Cities"]) do v["Icon"] = v["DefaultIcon"] end end
+						if playerControlled then 
+							ContextDisabled = false 
+							for k,v in pairs(nations[nationSelectedForPlaying]["Cities"]) do v["Icon"] = v["DefaultIcon"] end
+							for k,v in pairs(nations[nationSelectedForPlaying]["Buildings"]) do v["Icon"] = v["DefaultIcon"] end
+						end
 						if not playerControlled then AIPaused = false end
 					end
 				})
@@ -530,10 +672,16 @@ local function FireNuke(from,to,playerControlled)
 					["step"] = 0,
 					["stepLimit"] = 20,
 					["Function"] = function()
-						to.Population = to.Population / 2
+						local a = to.Population / 2
+						to.Population = to.Population - a
+						to.Dead = to.Dead + a
 						to.Nukes = math.floor(to.Nukes / 2)
 						
-						if playerControlled then ContextDisabled = false for k,v in pairs(nations[nationSelectedForPlaying]["Cities"]) do v["Icon"] = v["DefaultIcon"] end end
+						if playerControlled then 
+							ContextDisabled = false 
+							for k,v in pairs(nations[nationSelectedForPlaying]["Cities"]) do v["Icon"] = v["DefaultIcon"] end
+							for k,v in pairs(nations[nationSelectedForPlaying]["Buildings"]) do v["Icon"] = v["DefaultIcon"] end
+						end
 						if not playerControlled then AIPaused = false end
 					end
 				})
@@ -544,11 +692,35 @@ end
 
 --[[
 	The ContextMenu table is quickly becoming outdated now that we don't have a context menu.
-	I think cities still access from here, so I'm keeping ContextMenu intact until I migrate the useful parts somewhere else.
+	I think cities still access from here, so I'm keeping ContextMenu intact until I migrate the useful parts somewhere else
+	
+	Edit: I commented out everything inside for now as I'm converting to a new system.
 ]]--
 local ContextMenu = {
-	["You"] = { -- Clicking on your own cities
-		--[[[1] = {
+	[10] = {
+		["Allegiance"] = "enemy", -- When this context button will pop up, enemy for enemy specific targets, neutral for unaligned nations, ally for allied nations, player for the player's nation. This can be extended into a table for multiple allegiances.
+		["Site"] = true, -- If true, then all sites are applicable for context button, a string for specific building types which can be extended to a table of strings
+		["Text"] = "Fire Nuke",
+		["Function"] = function(cityName,city)
+			ContextPanel.x = -100
+			ContextPanel.y = -100
+			ContextDisabled = true
+			
+			for k,v in pairs(nations[nationSelectedForPlaying]["Cities"]) do
+				v["Icon"] = tostring(v["Nukes"])
+			end
+			
+			if options["BeginnerAlerts"] then Alert("Select a friendly city to fire from.",nations[nationSelectedForPlaying]["Color"]) end
+			
+			ContextOverride = function(city2)
+				if city2.Nukes > 0 then
+					FireNuke(city2,city,true)
+				end
+			end
+		end,
+	},
+	--[[["You"] = { -- Clicking on your own cities
+		[1] = {
 			["Text"] = "Build Nuke",
 			["Function"] = function(city)
 				city.Icon = "N"
@@ -561,14 +733,14 @@ local ContextMenu = {
 				city.Icon = "C"
 				city.Work = "BuildCruise"
 			end,
-		},]]--
-		--[[[1] = {
+		},
+		[1] = {
 			["Text"] = "Build..",
 			["Function"] = function(city)
 				city.Icon = "N"
 				city.Work = "BuildNuke"
 			end,
-		},]]--
+		},
 		[1] = {
 			["Text"] = "View",
 			["Function"] = function(cityName,city)
@@ -583,7 +755,7 @@ local ContextMenu = {
 			end,
 		},
 		
-		--[[["command"] = {
+		["command"] = {
 			[1] = {
 				["Text"] = "View",
 				["Function"] = function(baseName,base)
@@ -614,7 +786,7 @@ local ContextMenu = {
 					ContextPopUp(t)
 				end,
 			},
-		}]]--
+		}
 	},
 	["Enemy"] = { -- Clicking on enemy cities
 		[1] = {
@@ -637,7 +809,7 @@ local ContextMenu = {
 				end
 			end,
 		}
-	},
+	},]]--
 }
 
 local insertBuilding = nil
@@ -647,6 +819,7 @@ local buildings = {
 		["Name"] = "https://youtu.be/dQw4w9WgXcQ",
 		["Cost"] = 0,
 		["Icon"] = "%",
+		["DefaultIcon"] = "%",
 		["Type"] = "construction",
 		["mb1click"] = function(v,k,n) 
 			local t = {
@@ -680,31 +853,36 @@ local buildings = {
 		["Name"] = "Missile Silo",
 		["Cost"] = 1000000, -- 1M
 		["Icon"] = "M",
+		["DefaultIcon"] = "M",
 		["Type"] = "silo",
 		["Turns"] = 2,
 		["Health"] = 2,
 		["Nukes"] = 0,
 		["Cruise"] = 0,
+		["WorkLeft"] = 0,
+		["Work"] = nil,
 		["mb1click"] = function(v,k,n) 
 			local t = {
 				["topLabel"] = "Missile Silo",
-				["button1"] = {
-					["label1"] = "1 Nuke ($200K)",
-					["label2"] = "Build",
-					["function"] = function()
-						if v["Work"] ~= "BuildNuke" then
-							if n["Resources"] > 200000 then -- 200K
-								n["Resources"] = n["Resources"] - 200000
-								ContextPopUpSTATUSLABEL.text = "Building one nuke."
-								v["Work"] = "BuildNuke"
-							else
-								ContextPopUpSTATUSLABEL.text = "Not enough money!"
+				["buttons"] = {
+					[1] = {
+						["label1"] = "Nuclear Missile",
+						["label2"] = "Build $200K",
+						["function"] = function()
+							if v["Work"] ~= "BuildNuke" then
+								if n["Resources"] > 200000 then -- 200K
+									n["Resources"] = n["Resources"] - 200000
+									ContextPopUpSTATUSLABEL.text = "Building a nuke, 1 turn(s) left"
+									v["Work"] = "BuildNuke"
+								else
+									ContextPopUpSTATUSLABEL.text = "We don't have enough money!"
+								end
 							end
-						end
-					end,
-					["help"] = function()
-					
-					end,
+						end,
+						["help"] = function()
+							doomapediaRedirect("Nuclear Missile")
+						end,
+					},
 				},
 				["status1"] = "Cond. ",
 				["status2"] = "Nukes: ",
@@ -712,7 +890,7 @@ local buildings = {
 			}
 			
 			if v["Health"] == 2 then
-				t["status1"] = t["status1"].." Working"
+				t["status1"] = t["status1"].." Operable"
 			else
 				t["status1"] = t["status1"].." CRITICAL"
 			end
@@ -721,13 +899,38 @@ local buildings = {
 			t["status3"] = t["status3"]..v["Cruise"]
 			
 			if v["Work"] == "BuildNuke" then
-				t["info"] = "Building one nuke."
+				t["info"] = "Building a nuke, "..v["WorkLeft"].." turn(s) left"
 			else
 				t["info"] = "Sitting idle. Assign work for us to do!"
 			end
 			ContextPopUp(t)
 		end,
 	},
+	
+	--[[[2] = {
+		["Name"] = "Missile Silo2",
+		["Cost"] = 1000000, -- 1M
+		["Icon"] = "M",
+		["Type"] = "silo",
+	},
+	[3] = {
+		["Name"] = "Missile Silo3",
+		["Cost"] = 1000000, -- 1M
+		["Icon"] = "M",
+		["Type"] = "silo",
+	},
+	[4] = {
+		["Name"] = "Missile Silo4",
+		["Cost"] = 1000000, -- 1M
+		["Icon"] = "M",
+		["Type"] = "silo",
+	},
+	[5] = {
+		["Name"] = "Missile Silo5",
+		["Cost"] = 1000000, -- 1M
+		["Icon"] = "M",
+		["Type"] = "silo",
+	},]]--
 }
 
 local function insertBuilding(id,change,N)
@@ -1002,7 +1205,7 @@ local function resolveTurn()
 				cobalt.draw()
 				cobalt.application.view:render()
 				
-				if DEFCON <= 1 then v.Work = false end
+				v.Work = false
 			elseif DEFCON <= 1 then
 				v.Work = false
 			end
@@ -1146,6 +1349,16 @@ function cobalt.update( dt )
 	end
 end
 
+local function startGame()
+	game = { -- This will be done in Alpha 5
+		["Players"] = {
+			
+		},
+	}
+	if options["BeginnerAlerts"] then Alert("Build your strategic command center",nations[nationSelectedForPlaying]["Color"]) end
+	gameRunning = true
+end
+
 function cobalt.draw()
 	if gameRunning then
 		if CommandCenterGUI then
@@ -1252,118 +1465,52 @@ function cobalt.mousepressed( x, y, button )
 						local cityFound = false
 						for k,v in pairs(N["Cities"]) do
 							if v["X"] == x and v["Y"] == y then
-								ContextPopUp({
-									["topLabel"] = k,
-									["info"] = "The city bustles with life.",
-									["status1"] = "Alive: "..renderPop(v["Population"]),
-									["status2"] = "Dead: "..renderPop(v["Dead"]),
-									["status3"] = "$/Turn: "..renderPop((v["Population"] /(DEFCON/5) ) /5),
-								})
-								--[[if not ContextDisabled then
-									cityFound = true
-									ContextSelected = v
-									ContextPanel.backColour = nations[nationSelectedForGUI]["Color"]
-									ContextLabels[1].text = k
-									ContextLabels[2].text = "Pop: "..renderPop(v["Population"])
-									ContextLabels[3].text = "Income: "..renderPop( (v["Population"] /(DEFCON/5) ) /5 )
-									ContextLabels[4].text = ""
+								if ContextOverride then ContextOverride(v) else
+									local t = {
+										["topLabel"] = k,
+										["info"] = "The city bustles with life.",
+										["status1"] = "Alive: "..renderPop(v["Population"]),
+										["status2"] = "Dead: "..renderPop(v["Dead"]),
+										["status3"] = "$/Turn: "..renderPop((v["Population"] /(DEFCON/5) ) /5),
+									}
+									if N == nationSelectedForPlaying then
 									
-									ContextPanel.backColour = nations[nationSelectedForGUI]["Color"]
-									ContextLabels[1].backColour = nations[nationSelectedForGUI]["Color"]
-									ContextLabels[2].backColour = nations[nationSelectedForGUI]["Color"]
-									ContextLabels[3].backColour = nations[nationSelectedForGUI]["Color"]
-									ContextLabels[4].backColour = nations[nationSelectedForGUI]["Color"]
-									
-									--ContextLabels[3].text = "Nukes: "..v["Nukes"]
-									--ContextLabels[4].text = "Cruise: "..v["Cruise"]
-									if nationSelectedForGUI ~= nationSelectedForPlaying then
-										for i=1,2 do
-											ContextButtons[i]["backColour"] = nations[nationSelectedForGUI]["Color"]
-											if ContextMenu["Enemy"][i] then
-												ContextButtons[i]["text"] = ContextMenu["Enemy"][i]["Text"]
-											else
-												ContextButtons[i]["text"] = ""
-											end
-											ContextButtons[i].onclick = function() ContextMenu["Enemy"][i]["Function"](k,v) end
-										end
 									else
-										for i=1,2 do
-											ContextButtons[i]["backColour"] = nations[nationSelectedForGUI]["Color"]
-											if ContextMenu["You"][i] then
-												ContextButtons[i]["text"] = ContextMenu["You"][i]["Text"]
-											else
-												ContextButtons[i]["text"] = ""
-											end
-											ContextButtons[i].onclick = function() ContextMenu["You"][i]["Function"](k,v) end
-										end
-									end
-								
-									local xF = x+1
-									local yF = y
-									
-									if x+ContextPanel.w >= 51 then xF = x-ContextPanel.w end
-									if y+ContextPanel.h >= 19 then yF = y-ContextPanel.h end
-									
-									ContextPanel.x = xF
-									ContextPanel.y = yF
-									clickOut = false
-								elseif ContextOverride then
-									ContextOverride(v)
-								end]]--
-							end
-						end
-						if not cityFound then -- We didn't click on a city.. Maybe we clicked on a military building?
-							for k,v in pairs(N["Buildings"]) do
-								if v["X"] == x and v["Y"] == y then
-									if v["mb1click"] then
-										v["mb1click"](v,k,N) -- Pass the script our actual building, as well as our nation file
-									end
-									--[[if v["type"] == "command" then
-										local t = {
-											["topLabel"] = "Command Center",
-											["button1"] = {
-												["label1"] = "Raise DEFCON",
-												["label2"] = "Activate",
+										t["buttons"] = {
+											[1] = {
+												["label1"] = "Attack City",
+												["label2"] = "Slct. Weapon",
 												["function"] = function()
-													if DEFCON > 1 then
-														ContextPopUpSTATUSLABEL.text = "Raising the DEFCON level.."
-														v["Work"] = "RaiseDEFCON"
-													else
-														ContextPopUpSTATUSLABEL.text = "We're already in a nuclear war!"
+													ContextPopUpBG.state = false
+													nationSelectedForGUI = nationSelectedForPlaying
+													for k,v in pairs(nations[nationSelectedForPlaying]["Buildings"]) do
+														if v["Nukes"] and tonumber(v["Nukes"]) then v["Icon"] = tostring(v["Nukes"]) end
+													end
+													
+													if options["BeginnerAlerts"] then Alert("Select a silo to fire from or press any key to cancel your attack.",nations[nationSelectedForPlaying]["Color"]) end
+													
+													ContextOverride = function(c2)
+														if c2.Nukes and c2.Nukes > 0 then
+															
+															FireNuke(c2,v,true)
+														end
 													end
 												end,
 												["help"] = function()
-												
+													doomapediaRedirect("Attack City")
 												end,
-											},
-											["status1"] = "Cond. ",
+											}
 										}
-										
-										if v["health"] == 3 then
-											t["status1"] = t["status1"].." Working"
-										elseif v["health"] == 2 then
-											t["status1"] = t["status1"].." Damaged"
-										else
-											t["status1"] = t["status1"].." CRITICAL"
-										end
-										
-										if v["Work"] == "RaiseDEFCON" then
-											t["info"] = "Raising the DEFCON level.."
-										else
-											t["info"] = "Sitting idle. Assign work for us to do!"
-										end
-										ContextPopUp(t)
-									end]]--
+									end
+									ContextPopUp(t)
 									--[[if not ContextDisabled then
 										cityFound = true
 										ContextSelected = v
 										ContextPanel.backColour = nations[nationSelectedForGUI]["Color"]
-										if v["type"] == "command" then
-											ContextLabels[1].text = "Command"
-											ContextLabels[2].text = "Center"
-											ContextLabels[3].text = "Health: "..tostring(v["health"])
-											ContextLabels[4].text = ""
-										end
+										ContextLabels[1].text = k
+										ContextLabels[2].text = "Pop: "..renderPop(v["Population"])
+										ContextLabels[3].text = "Income: "..renderPop( (v["Population"] /(DEFCON/5) ) /5 )
+										ContextLabels[4].text = ""
 										
 										ContextPanel.backColour = nations[nationSelectedForGUI]["Color"]
 										ContextLabels[1].backColour = nations[nationSelectedForGUI]["Color"]
@@ -1376,22 +1523,22 @@ function cobalt.mousepressed( x, y, button )
 										if nationSelectedForGUI ~= nationSelectedForPlaying then
 											for i=1,2 do
 												ContextButtons[i]["backColour"] = nations[nationSelectedForGUI]["Color"]
-												if ContextMenu["Enemy"][ v["type"] ] and ContextMenu["Enemy"][ v["type"] ][i] then
-													ContextButtons[i]["text"] = ContextMenu["Enemy"][ v["type"] ][i]["Text"]
+												if ContextMenu["Enemy"][i] then
+													ContextButtons[i]["text"] = ContextMenu["Enemy"][i]["Text"]
 												else
 													ContextButtons[i]["text"] = ""
 												end
-												ContextButtons[i].onclick = function() ContextMenu["Enemy"][ v["type"] ][i]["Function"](k,v) end
+												ContextButtons[i].onclick = function() ContextMenu["Enemy"][i]["Function"](k,v) end
 											end
 										else
 											for i=1,2 do
 												ContextButtons[i]["backColour"] = nations[nationSelectedForGUI]["Color"]
-												if ContextMenu["You"][ v["type"] ] and ContextMenu["You"][ v["type"] ][i] then
-													ContextButtons[i]["text"] = ContextMenu["You"][ v["type"] ][i]["Text"]
+												if ContextMenu["You"][i] then
+													ContextButtons[i]["text"] = ContextMenu["You"][i]["Text"]
 												else
 													ContextButtons[i]["text"] = ""
 												end
-												ContextButtons[i].onclick = function() ContextMenu["You"][ v["type"] ][i]["Function"](k,v) end
+												ContextButtons[i].onclick = function() ContextMenu["You"][i]["Function"](k,v) end
 											end
 										end
 									
@@ -1407,6 +1554,106 @@ function cobalt.mousepressed( x, y, button )
 									elseif ContextOverride then
 										ContextOverride(v)
 									end]]--
+								end
+							end
+						end
+						if not cityFound then -- We didn't click on a city.. Maybe we clicked on a military building?
+							for k,v in pairs(N["Buildings"]) do
+								if v["X"] == x and v["Y"] == y then
+									if ContextOverride then ContextOverride(v) else
+										if v["mb1click"] then
+											v["mb1click"](v,k,N) -- Pass the script our actual building, as well as our nation file
+										end
+										--[[if v["type"] == "command" then
+											local t = {
+												["topLabel"] = "Command Center",
+												["button1"] = {
+													["label1"] = "Raise DEFCON",
+													["label2"] = "Activate",
+													["function"] = function()
+														if DEFCON > 1 then
+															ContextPopUpSTATUSLABEL.text = "Raising the DEFCON level.."
+															v["Work"] = "RaiseDEFCON"
+														else
+															ContextPopUpSTATUSLABEL.text = "We're already in a nuclear war!"
+														end
+													end,
+													["help"] = function()
+													
+													end,
+												},
+												["status1"] = "Cond. ",
+											}
+											
+											if v["health"] == 3 then
+												t["status1"] = t["status1"].." Working"
+											elseif v["health"] == 2 then
+												t["status1"] = t["status1"].." Damaged"
+											else
+												t["status1"] = t["status1"].." CRITICAL"
+											end
+											
+											if v["Work"] == "RaiseDEFCON" then
+												t["info"] = "Raising the DEFCON level.."
+											else
+												t["info"] = "Sitting idle. Assign work for us to do!"
+											end
+											ContextPopUp(t)
+										end]]--
+										--[[if not ContextDisabled then
+											cityFound = true
+											ContextSelected = v
+											ContextPanel.backColour = nations[nationSelectedForGUI]["Color"]
+											if v["type"] == "command" then
+												ContextLabels[1].text = "Command"
+												ContextLabels[2].text = "Center"
+												ContextLabels[3].text = "Health: "..tostring(v["health"])
+												ContextLabels[4].text = ""
+											end
+											
+											ContextPanel.backColour = nations[nationSelectedForGUI]["Color"]
+											ContextLabels[1].backColour = nations[nationSelectedForGUI]["Color"]
+											ContextLabels[2].backColour = nations[nationSelectedForGUI]["Color"]
+											ContextLabels[3].backColour = nations[nationSelectedForGUI]["Color"]
+											ContextLabels[4].backColour = nations[nationSelectedForGUI]["Color"]
+											
+											--ContextLabels[3].text = "Nukes: "..v["Nukes"]
+											--ContextLabels[4].text = "Cruise: "..v["Cruise"]
+											if nationSelectedForGUI ~= nationSelectedForPlaying then
+												for i=1,2 do
+													ContextButtons[i]["backColour"] = nations[nationSelectedForGUI]["Color"]
+													if ContextMenu["Enemy"][ v["type"] ] and ContextMenu["Enemy"][ v["type"] ][i] then
+														ContextButtons[i]["text"] = ContextMenu["Enemy"][ v["type"] ][i]["Text"]
+													else
+														ContextButtons[i]["text"] = ""
+													end
+													ContextButtons[i].onclick = function() ContextMenu["Enemy"][ v["type"] ][i]["Function"](k,v) end
+												end
+											else
+												for i=1,2 do
+													ContextButtons[i]["backColour"] = nations[nationSelectedForGUI]["Color"]
+													if ContextMenu["You"][ v["type"] ] and ContextMenu["You"][ v["type"] ][i] then
+														ContextButtons[i]["text"] = ContextMenu["You"][ v["type"] ][i]["Text"]
+													else
+														ContextButtons[i]["text"] = ""
+													end
+													ContextButtons[i].onclick = function() ContextMenu["You"][ v["type"] ][i]["Function"](k,v) end
+												end
+											end
+										
+											local xF = x+1
+											local yF = y
+											
+											if x+ContextPanel.w >= 51 then xF = x-ContextPanel.w end
+											if y+ContextPanel.h >= 19 then yF = y-ContextPanel.h end
+											
+											ContextPanel.x = xF
+											ContextPanel.y = yF
+											clickOut = false
+										elseif ContextOverride then
+											ContextOverride(v)
+										end]]--
+									end
 								end
 							end
 						end
@@ -1451,30 +1698,36 @@ function cobalt.mousepressed( x, y, button )
 							["nukes"] = 0,
 							["Health"] = 3,
 							["Icon"] = "A",
+							["DefaultIcon"] = "A",
 							["Work"] = false,
 							["mb1click"] = function(v)
 								local t = {
 									["topLabel"] = "Command Center",
-									["button1"] = {
-										["label1"] = "Lower DEFCON",
-										["label2"] = "Activate",
-										["function"] = function()
-											if DEFCON > 1 then
-												ContextPopUpSTATUSLABEL.text = "Preparing to lower DEFCON.."
-												v["Work"] = "RaiseDEFCON"
-											else
-												ContextPopUpSTATUSLABEL.text = "We're already in a nuclear war!"
-											end
-										end,
-										["help"] = function()
-										
-										end,
+									["buttons"] = {
+										[1] = {
+											["label1"] = "Lower DEFCON",
+											["label2"] = "Scheme $100K",
+											["function"] = function()
+												if DEFCON > 1 and nations[nationSelectedForPlaying]["Resources"] >= 100000 then
+													ContextPopUpSTATUSLABEL.text = "Preparing to lower DEFCON.."
+													nations[nationSelectedForPlaying]["Resources"] = nations[nationSelectedForPlaying]["Resources"] - 100000
+													v["Work"] = "RaiseDEFCON"
+												elseif DEFCON == 1 then
+													ContextPopUpSTATUSLABEL.text = "We're already in a nuclear war!"
+												elseif nations[nationSelectedForPlaying]["Resources"] <= 100000 then
+													ContextPopUpSTATUSLABEL.text = "We don't have enough money!"
+												end
+											end,
+											["help"] = function()
+											
+											end,
+										},
 									},
 									["status1"] = "Cond. ",
 								}
 								
 								if v["Health"] == 3 then
-									t["status1"] = t["status1"].." Working"
+									t["status1"] = t["status1"].." Operable"
 								elseif v["Health"] == 2 then
 									t["status1"] = t["status1"].." Damaged"
 								else
@@ -1523,8 +1776,9 @@ function cobalt.mousepressed( x, y, button )
 							["topLabel"] = "Construction",
 							["info"] = "Choose something to build.",
 						}
+						popUpTable["buttons"] = {}
 						for i,v in ipairs(buildings) do
-							popUpTable["button"..i] = {
+							popUpTable["buttons"][i] = {
 								["label2"] = "Build $"..renderPop(v["Cost"]),
 								["label1"] = v["Name"],
 								["function"] = function()
@@ -1571,6 +1825,15 @@ end
 
 function cobalt.keypressed( keycode, key )
 	if gameRunning then
+		if ContextOverride then
+			ContextOverride = nil
+			for k,v in pairs(nations[nationSelectedForPlaying]["Buildings"]) do
+				if v["DefaultIcon"] then v["Icon"] = v["DefaultIcon"] end
+			end
+			for k,v in pairs(nations[nationSelectedForFighting]["Buildings"]) do
+				if v["DefaultIcon"] then v["Icon"] = v["DefaultIcon"] end
+			end
+		end
 		if string.lower(key) == "q" then
 			if ContextPopUpBG.state == "game" then
 				FlashContextPopUp()
@@ -1626,6 +1889,14 @@ function cobalt.keypressed( keycode, key )
 			cobalt.state = "game"
 		end
 	end
+	if keycode == 53 then
+		if cobalt.state == "doomapedia" then
+			if game then cobalt.state = "pause" else cobalt.state = "mainmenu" end
+		else 
+			if gameRunning then gameRunning = false end
+			cobalt.state = "doomapedia" 
+		end
+	end
 end
 
 function cobalt.keyreleased( keycode, key )
@@ -1635,8 +1906,6 @@ end
 function cobalt.textinput( t )
 
 end
-
-if options["BeginnerAlerts"] then Alert("Build your strategic command center",nations[nationSelectedForPlaying]["Color"]) end
 
 nations[nationSelectedForPlaying]["Buildings"] = {}
 
@@ -1693,10 +1962,20 @@ pauseMenu:add("button",{
 	["backColour"] = 128,
 })
 pauseMenu:add("button",{
-	["text"] = "Options",
+	["text"] = "Doomapedia",
 	["foreColour"] = colors.white,
 	["wrap"] = "center",
 	["y"] = 11,
+	["h"] = 1,
+	["backColour"] = colors.blue,
+}).onclick = function()
+	cobalt.state = "doomapedia"
+end
+pauseMenu:add("button",{
+	["text"] = "Options",
+	["foreColour"] = colors.white,
+	["wrap"] = "center",
+	["y"] = 13,
 	["h"] = 1,
 	["backColour"] = colors.blue,
 }).onclick = function()
@@ -1706,7 +1985,7 @@ pauseMenu:add("button",{
 	["text"] = "Exit Game",
 	["foreColour"] = colors.white,
 	["wrap"] = "center",
-	["y"] = 13,
+	["y"] = 15,
 	["h"] = 1,
 	["backColour"] = colors.blue,
 }).onclick = function()
@@ -1752,6 +2031,7 @@ optionsMenu:add("button",{
 	["wrap"] = "center",
 	["y"] = 17,
 	["h"] = 1,
+	["w"] = 12,
 	["backColour"] = colors.blue,
 }).onclick = function()
 	if game then
@@ -1760,14 +2040,26 @@ optionsMenu:add("button",{
 		cobalt.state = "mainmenu"
 	end
 end
-_checkbox1 = optionsMenu:add("checkbox",{
-	["label"] = "Beginner Alerts (Not implemented yet)",
+local _checkbox1 = optionsMenu:add("checkbox",{
+	["label"] = "Beginner Alerts",
 	["foreColour"] = colors.white,
 	["x"] = 3,
 	["y"] = 5,
 	["selected"] = true,
 	["backColour"] = colors.blue,
 })
+local _applyChanges = optionsMenu:add("button",{
+	["text"] = "Apply Changes",
+	["foreColour"] = colors.white,
+	["wrap"] = "center",
+	["y"] = 15,
+	["h"] = 1,
+	["w"] = 12,
+	["backColour"] = colors.blue,
+})
+_applyChanges.onclick = function()
+	writeCFG("BeginnerAlerts",_checkbox1.selected)
+end
 
 local mainMenu = cobalt.ui.new({
 	["x"] = 1,
@@ -1790,12 +2082,50 @@ mainMenu:add("text",{
 	["wrap"] = "center",
 	["y"] = 3,
 })
-mainMenu:add("text",{
-	["text"] = "Version - "..SoftwareVERSION,
-	["foreColour"] = colors.white,
-	["wrap"] = "left",
-	["y"] = 19,
-})
+
+term.clear()
+term.setCursorPos(1,1)
+term.setTextColor(colors.blue)
+print("Checking for updates...")
+local pnt = http.get("https://raw.githubusercontent.com/Saldor010/Impending-Doom/master/coldwar.lua")
+if pnt then
+	pnt.readLine()
+	pnta = pnt.readLine()
+	pnt.close()
+end
+local vn = ""--SoftwareVERSION
+if not pnt then
+	term.setTextColor(colors.red)
+	print("Github could not be accessed. Continuing to mainmenu.")
+else
+	term.setTextColor(colors.lime)
+	print("Github accessed successfully!")
+	vn = string.sub(pnta,26)
+	vn = string.sub(vn,1,#vn-1)
+end
+sleep()
+
+if vn == SoftwareVERSION then
+	mainMenu:add("text",{
+		["text"] = "Version - "..SoftwareVERSION,
+		["foreColour"] = colors.white,
+		["wrap"] = "left",
+		["y"] = 19,
+	})
+else
+	mainMenu:add("button",{
+		["text"] = "Version - "..SoftwareVERSION,
+		["foreColour"] = colors.white,
+		["backColour"] = colors.blue,
+		["x"] = 1,
+		["h"] = 1,
+		["w"] = string.len("Version - "..SoftwareVERSION),
+		["y"] = 19,
+	}).onclick = function()
+		cobalt.state = "update"
+	end
+end
+
 mainMenu:add("text",{
 	["text"] = "Created by Saldor010",
 	["foreColour"] = colors.white,
@@ -1822,6 +2152,7 @@ mainMenu:add("button",{
 	["h"] = 1,
 	["backColour"] = colors.blue,
 }).onclick = function()
+	if options["BeginnerAlerts"] then _checkbox1.selected = true else _checkbox1.selected = false end
 	cobalt.state = "options"
 end
 mainMenu:add("button",{
@@ -1843,8 +2174,7 @@ mainMenu:add("button",{
 	["backColour"] = colors.blue,
 }).onclick = function()
 	cobalt.state = "game"
-	game = {}
-	gameRunning = true
+	startGame()
 end
 mainMenu:add("button",{
 	["text"] = "Multiplayer",
@@ -1855,13 +2185,15 @@ mainMenu:add("button",{
 	["backColour"] = 128,
 })
 mainMenu:add("button",{
-	["text"] = "Load Game",
-	["foreColour"] = colors.black,
+	["text"] = "Doomapedia",
+	["backColour"] = colors.blue,
+	["foreColour"] = colors.white,
 	["wrap"] = "center",
 	["y"] = 11,
 	["h"] = 1,
-	["backColour"] = 128,
-})
+}).onclick = function()
+	cobalt.state = "doomapedia"
+end
 
 local creditsMenu = cobalt.ui.new({
 	["x"] = 1,
@@ -1932,6 +2264,196 @@ creditsMenu:add("button",{
 	cobalt.state = "mainmenu"
 end
 
-cobalt.state = "mainmenu"
+local updateMenu = cobalt.ui.new({
+	["x"] = 1,
+	["y"] = 1,
+	["w"] = 51,
+	["h"] = 19,
+	["backColour"] = colors.black,
+	["foreColour"] = colors.blue,
+	["state"] = "update",
+})
+updateMenu:add("text",{
+	["text"] = "You are running version - ",
+	["foreColour"] = colors.white,
+	["backColour"] = colors.blue,
+	["x"] = 2,
+	["y"] = 3,
+})
+local t = updateMenu:add("text",{
+	["text"] = SoftwareVERSION,
+	["foreColour"] = colors.white,
+	["x"] = 51-#SoftwareVERSION-5,
+	["y"] = 3,
+})
+updateMenu:add("text",{
+	["text"] = "The update available is version - ",
+	["foreColour"] = colors.white,
+	["backColour"] = colors.blue,
+	["x"] = 2,
+	["y"] = 5,
+})
+local t = updateMenu:add("text",{
+	["text"] = vn,
+	["foreColour"] = colors.white,
+	["x"] = 51-#vn-5,
+	["y"] = 5,
+})
+updateMenu:add("text",{
+	["text"] = "All saved games and settings will remain intact.",
+	["foreColour"] = colors.blue,
+	["wrap"] = "center",
+	["y"] = 8,
+})
+updateMenu:add("text",{
+	["text"] = "Would you like to update?",
+	["foreColour"] = colors.blue,
+	["wrap"] = "center",
+	["y"] = 10,
+})
+local t = updateMenu:add("button",{
+	["text"] = "Update Now",
+	["foreColour"] = colors.white,
+	["y"] = 13,
+	["h"] = 1,
+	["w"] = 20,
+	["wrap"] = "center",
+	["backColour"] = colors.red,
+})
+t.onclick = function()
+	if t.text == "Update Now" then t.text = "Confirm Update" return end
+	local a = http.get("http://pastebin.com/raw/RkXibQCz")
+	if a then
+		local b = a.readAll()
+		a.close()
+		cobalt.exit()
+		loadstring(b)()
+	end
+end
+updateMenu:add("button",{
+	["text"] = "Return to Main Menu",
+	["foreColour"] = colors.white,
+	["y"] = 15,
+	["h"] = 1,
+	["w"] = 20,
+	["wrap"] = "center",
+	["backColour"] = colors.blue,
+}).onclick = function()
+	t.text = "Update Now"
+	cobalt.state = "mainmenu"
+end
 
+local doomapedia = cobalt.ui.new({
+	["x"] = 1,
+	["y"] = 1,
+	["w"] = 51,
+	["h"] = 19,
+	["backColour"] = colors.black,
+	["foreColour"] = colors.blue,
+	["state"] = "doomapedia",
+})
+doomapedia:add("text",{
+	["text"] = "D O O M - apedia",
+	["foreColour"] = colors.blue,
+	["x"] = 16,
+	["y"] = 2,
+})
+local _doomapediaTitle = doomapedia:add("text",{
+	["text"] = "",
+	["foreColour"] = colors.blue,
+	["wrap"] = "center",
+	["y"] = 4,
+	["h"] = 1,
+})
+local _doomapediaInfo = doomapedia:add("text",{
+	["text"] = "Click the 'Entries' button to search for help on a game concept. Click the 'Back' button (or press the ? button on your keyboard) to go back to your game.",
+	["foreColour"] = colors.white,
+	["x"] = 2,
+	["w"] = 47,
+	["y"] = 5,
+	["h"] = 10,
+})
+doomapedia:add("button",{
+	["text"] = "Back",
+	["foreColour"] = colors.white,
+	["y"] = 1,
+	["h"] = 1,
+	["w"] = 4,
+	["x"] = 1,
+	["backColour"] = colors.blue,
+}).onclick = function()
+	if game then
+		cobalt.state = "pause"
+	else
+		cobalt.state = "mainmenu"
+	end
+end
+local _doomapediaEntries = doomapedia:add("panel",{
+	["x"] = 31,
+	["y"] = 2,
+	["w"] = 21,
+	["h"] = 18,
+	["backColour"] = colors.white,
+	["foreColour"] = colors.blue,
+	["state"] = false,
+})
+local _doomapediaEntryButtons = {}
+local ct = 0
+for k,v in pairs(doomapediaEntries) do
+	ct = ct + 1
+	local t = _doomapediaEntries:add("button",{
+		["text"] = k,
+		["foreColour"] = colors.white,
+		["y"] = ct,
+		["h"] = 1,
+		["x"] = 1,
+		["w"] = 21,
+		["backColour"] = colors.blue,
+	})
+	t.onclick = function()
+		_doomapediaEntries.state = false
+		for k,v in pairs(_doomapediaEntryButtons) do
+			v.state = false
+		end
+		_doomapediaInfo.text = v
+		_doomapediaTitle.text = "- "..k.." -"
+	end
+	_doomapediaEntryButtons[k] = t
+end
+doomapedia:add("button",{
+	["text"] = "Entries",
+	["foreColour"] = colors.white,
+	["y"] = 1,
+	["h"] = 1,
+	["w"] = 7,
+	["x"] = 51-7,
+	["backColour"] = colors.blue,
+}).onclick = function()
+	if _doomapediaEntries.state then
+		_doomapediaEntries.state = false
+		for k,v in pairs(_doomapediaEntryButtons) do
+			v.state = false
+		end
+	else
+		_doomapediaEntries.state = "doomapedia"
+		for k,v in pairs(_doomapediaEntryButtons) do
+			v.state = "doomapedia"
+		end
+	end
+end
+doomapediaRedirect = function(k)
+	if doomapediaEntries[k] then
+		_doomapediaEntries.state = false
+		for k,v in pairs(_doomapediaEntryButtons) do
+			v.state = false
+		end
+		_doomapediaInfo.text = doomapediaEntries[k]
+		_doomapediaTitle.text = "- "..k.." -"
+		gameRunning = false
+		cobalt.state = "doomapedia"
+	end
+end
+
+cobalt.updatetimer = os.startTimer(cobalt.updatespeed)
+cobalt.state = "mainmenu"
 cobalt.initLoop()
